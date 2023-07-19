@@ -52,7 +52,8 @@ struct MyShader {
 	random: Random,
 	sphere: sdf::Sphere,
 	walls: [sdf::Plane;5],
-	ray_depth: u32
+	ray_depth: u32,
+	half_dims: Float3
 }
 
 impl MyShader {
@@ -70,9 +71,10 @@ impl MyShader {
 		];
 		return Self {
 			random: Random::new(),
-			sphere: sdf::Sphere::new(float3![0,1,0], 3.0),
+			sphere: sdf::Sphere::new(float3![0,-1,0], 2.0),
 			walls,
-			ray_depth: 0
+			ray_depth: 0,
+			half_dims: float3![dx, dy, dz]
 		};
 	}
 
@@ -87,12 +89,27 @@ impl MyShader {
 	}
 
 	fn emissive(&self, p: Float3) -> Float3 {
-		if f32::abs(p.x) < 1.0 && f32::abs(p.z) < 1.0 {
-			if f32::abs(p.y-4.0) < 0.001 {
-				return float3![10.0];
+		let light_size = 2.0;
+		if f32::abs(p.x) < light_size && f32::abs(p.z) < light_size {
+			if p.y + 0.01 > self.half_dims.y {
+				return float3![1.0];
 			}
 		}
 		return float3![0.0];
+	}
+
+	fn diffuse_color(&self, p: Float3) -> Float3 {
+		let d = 0.01;
+		if f32::abs(p.x) + d >= self.half_dims.x {
+			return cond![
+				p.x > 0.0,
+				float3![1,0,0],
+				float3![0,1,0]
+			];
+		}
+		else {
+			return float3![0.5];
+		}
 	}
 
 	fn calc_normal(&self, p: Float3) -> Float3 {
@@ -157,11 +174,11 @@ impl Shader for MyShader {
 		let mut Kd = float3![1];
 		let mut I = float3![0];
 
-		let mut iterations = 3;
+		let mut iterations = 5;
 		while iterations > 0 {
 			if let Some(hit) = self.ray_march(P, D, 0.001) {
 				I = I + Kd * self.emissive(hit.location);
-				Kd = 0.5 * Kd;
+				Kd = Kd * self.diffuse_color(hit.location);
 				D = self.random.cosine_weighted(hit.normal);
 				P = hit.location + 0.005 * D;
 			}
@@ -171,22 +188,6 @@ impl Shader for MyShader {
 			iterations -= 1;
 		}
 		return I;
-
-		/*
-		if let Some(hit) = self.primary_ray(camera, dir) {
-			let mut bounce = 0;
-			let mut k_diffuse = float3![1,1,1];
-			while bounce < 3 {
-				
-					illum = illum + k_diffuse * self.emissive(hit.location);
-					k_diffuse *= self.surface_color(hit.location);
-				}
-		 		return self.random.cosine_weighted(N);
-			}
-		else {
-			return self.env(dir);
-		}
-	*/
 	}
 
 } // impl Shader
@@ -204,18 +205,33 @@ impl<T: Shader> PathTracer<T> {
 
 	fn render(&mut self, iterations: u32) {
 		let resolution = float3![self.image.width(), self.image.height(), 0];
+		let factor = 1.0 / (iterations as f32);
 		let f = |i,j,color: &Color| {
 			let frag_coord = float3![i, j, 0];
 			let mut frag_color = float3![0];
 			for _ in 0..iterations {
-				frag_color = frag_color + self.shader.main(frag_coord, resolution);
+				frag_color = frag_color + factor * self.shader.main(frag_coord, resolution);
 			}
-			frag_color = frag_color / (iterations as f32);
 			return Color::new(color.r+frag_color.x, color.g+frag_color.y, color.b+frag_color.z, 1.0);
 		};
 		self.image.fill(f);
 	}
-	
+
+	fn saturate(x: f32) -> f32 {
+		if x != x {
+			return x;
+		}
+		else if x < 0.0 {
+			return 0.0;
+		}
+		else if x > 1.0 {
+			return 1.0;
+		}
+		else {
+			return x;
+		}
+	}
+
 	fn save(&self, path: &Path) -> Result<(), png::EncodingError> {
 
 		let file = File::create(path).unwrap();
@@ -233,7 +249,7 @@ impl<T: Shader> PathTracer<T> {
 
 		let data: Vec<u8> = self.image.pixels().iter()
 			.flat_map(|px| [px.r,px.g,px.b,px.a])
-			.map(|x| f32::floor(x*255.99_f32) as u8)
+			.map(|x| f32::floor(Self::saturate(x)*255.5_f32) as u8)
 			.collect();
 
 		return writer.write_image_data(&data);
@@ -248,9 +264,12 @@ fn main() {
 	let mut pt = PathTracer::new(
 		shader,
 		Buffer::<Color>::new(res,res,color![0,0,0,0]));
+	let mut i = 1;
 	loop {
 		pt.render(num_samples);
 		pt.save(Path::new("image.png")).unwrap();
+		println!("iteration {} saved", i);
+		i += 1;
 	}
 }
 
