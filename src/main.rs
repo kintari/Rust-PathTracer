@@ -33,6 +33,7 @@ macro_rules! cond {
 	}
 }
 
+/*
 macro_rules! color {
 	($r:expr,$g:expr,$b:expr,$a:expr) => {
 		Color::new($r as f32, $g as f32, $b as f32, $a as f32)
@@ -41,6 +42,7 @@ macro_rules! color {
 		Color::new($x as f32, $x as f32, $x as f32, $x as f32)
 	};
 }
+*/
 
 struct Hit {
 	distance: f32,
@@ -52,7 +54,8 @@ struct MyShader {
 	random: Random,
 	sphere: sdf::Sphere,
 	walls: [sdf::Plane;5],
-	ray_depth: u32
+	ray_depth: u32,
+	half_dims: Float3
 }
 
 impl MyShader {
@@ -70,9 +73,10 @@ impl MyShader {
 		];
 		return Self {
 			random: Random::new(),
-			sphere: sdf::Sphere::new(float3![0,1,0], 3.0),
+			sphere: sdf::Sphere::new(float3![0,-1,0], 2.0),
 			walls,
-			ray_depth: 0
+			ray_depth: 0,
+			half_dims: float3![dx, dy, dz]
 		};
 	}
 
@@ -87,12 +91,27 @@ impl MyShader {
 	}
 
 	fn emissive(&self, p: Float3) -> Float3 {
-		if f32::abs(p.x) < 1.0 && f32::abs(p.z) < 1.0 {
-			if f32::abs(p.y-4.0) < 0.001 {
-				return float3![10.0];
+		let light_size = 2.0;
+		if f32::abs(p.x) < light_size && f32::abs(p.z+2.0) < light_size {
+			if p.y + 0.01 > self.half_dims.y {
+				return float3![4.0];
 			}
 		}
 		return float3![0.0];
+	}
+
+	fn diffuse_color(&self, p: Float3) -> Float3 {
+		let d = 0.01;
+		if f32::abs(p.x) + d >= self.half_dims.x {
+			return cond![
+				p.x > 0.0,
+				float3![1,0.2,0.2],
+				float3![0.1,1,0.1]
+			];
+		}
+		else {
+			return float3![0.5];
+		}
 	}
 
 	fn calc_normal(&self, p: Float3) -> Float3 {
@@ -147,21 +166,21 @@ impl MyShader {
 impl Shader for MyShader {
 
 	fn main(&mut self, fragCoord: Float3, resolution: Float3) -> Float3 {
-		let u =       fragCoord.x / resolution.x;
-		let v = 1.0 - fragCoord.y / resolution.y;
+		let jitter = float3![self.random.uniform(), self.random.uniform(), 0.0];
+		let uv = (fragCoord + jitter) / resolution;
 		let camera = float3![0, 0, -20];
-		let dir = self.unproject(float3![u, v, 0.0]);
+		let dir = self.unproject(float3![uv.x, uv.y, 0.0]);
 
 		let mut P = camera;
 		let mut D = dir;
 		let mut Kd = float3![1];
 		let mut I = float3![0];
 
-		let mut iterations = 3;
+		let mut iterations = 5;
 		while iterations > 0 {
 			if let Some(hit) = self.ray_march(P, D, 0.001) {
 				I = I + Kd * self.emissive(hit.location);
-				Kd = 0.5 * Kd;
+				Kd = Kd * self.diffuse_color(hit.location);
 				D = self.random.cosine_weighted(hit.normal);
 				P = hit.location + 0.005 * D;
 			}
@@ -171,86 +190,103 @@ impl Shader for MyShader {
 			iterations -= 1;
 		}
 		return I;
-
-		/*
-		if let Some(hit) = self.primary_ray(camera, dir) {
-			let mut bounce = 0;
-			let mut k_diffuse = float3![1,1,1];
-			while bounce < 3 {
-				
-					illum = illum + k_diffuse * self.emissive(hit.location);
-					k_diffuse *= self.surface_color(hit.location);
-				}
-		 		return self.random.cosine_weighted(N);
-			}
-		else {
-			return self.env(dir);
-		}
-	*/
 	}
 
 } // impl Shader
 
+fn ACESFilm(x: Float3) -> Float3 {
+	let a = 2.51;
+	let b = 0.03;
+	let c = 2.43;
+	let d = 0.59;
+	let e = 0.14;
+	return saturate((x*(a*x+b))/(x*(c*x+d)+e));
+}
+
+fn exposure(value: Float3, e: f32) -> Float3 {
+	f32::exp2(e) * value
+}
+
 struct PathTracer<T> {
 	shader: T,
-	image: Buffer<Color>,
+	image: Buffer<Float3>,
+	exposure: f32
 }
 
 impl<T: Shader> PathTracer<T> {
 	
-	fn new(shader: T, image: Buffer::<Color>) -> Self {
-		return Self { shader, image };
+	fn new(shader: T, image: Buffer::<Float3>) -> Self {
+		return Self { shader, image, exposure: 0.0 };
 	}
 
 	fn render(&mut self, iterations: u32) {
-		let resolution = float3![self.image.width(), self.image.height(), 0];
-		let f = |i,j,color: &Color| {
-			let frag_coord = float3![i, j, 0];
+		let w = self.image.get_width();
+		let h = self.image.get_height();
+		let resolution = float3![w,h,0];
+		let e = 0.0; // exposure
+		let f = |i,j,&prev_color: &Float3| {
+			let frag_coord = float3![i, h-j-1, 0];
 			let mut frag_color = float3![0];
 			for _ in 0..iterations {
-				frag_color = frag_color + self.shader.main(frag_coord, resolution);
+				let c = self.shader.main(frag_coord, resolution);
+				frag_color = frag_color + exposure(c, e);
 			}
-			frag_color = frag_color / (iterations as f32);
-			return Color::new(color.r+frag_color.x, color.g+frag_color.y, color.b+frag_color.z, 1.0);
+			return frag_color / (iterations as f32) + prev_color;
 		};
 		self.image.fill(f);
 	}
-	
-	fn save(&self, path: &Path) -> Result<(), png::EncodingError> {
 
-		let file = File::create(path).unwrap();
-		let ref mut output = BufWriter::new(file);
-
-		let w = self.image.width();
-		let h = self.image.height();
-
-		let mut encoder = png::Encoder::new(output, w as u32, h as u32);
-		encoder.set_color(png::ColorType::Rgba);
-		encoder.set_depth(png::BitDepth::Eight);
-		encoder.set_srgb(png::SrgbRenderingIntent::RelativeColorimetric);
-	
-		let mut writer = encoder.write_header().unwrap();
-
-		let data: Vec<u8> = self.image.pixels().iter()
-			.flat_map(|px| [px.r,px.g,px.b,px.a])
-			.map(|x| f32::floor(x*255.99_f32) as u8)
-			.collect();
-
-		return writer.write_image_data(&data);
+	fn image(&self) -> &Buffer<Float3> {
+		return &self.image;
 	}
 
+} // impl PathTracer
+
+fn quantize_to_8bits(value: f32) -> u8 {
+	return f32::floor(saturate(value) * 255.9) as u8;
+}
+
+fn postprocess(image: &Buffer<Float3>) -> Buffer<Float3> {
+	return image.map(|x| ACESFilm(*x));
+}
+
+fn save_image(image: &Buffer<Float3>, path: &Path) -> Result<(), png::EncodingError> {
+
+	let file = File::create(path).unwrap();
+	let ref mut output = BufWriter::new(file);
+
+	let w = image.get_width();
+	let h = image.get_height();
+
+	let mut encoder = png::Encoder::new(output, w as u32, h as u32);
+	encoder.set_color(png::ColorType::Rgba);
+	encoder.set_depth(png::BitDepth::Eight);
+	encoder.set_srgb(png::SrgbRenderingIntent::RelativeColorimetric);
+
+	let mut writer = encoder.write_header().unwrap();
+
+	let data: Vec<u8> = image.get_pixels().iter()
+		.flat_map(|px| [px.x,px.y,px.z,1.0])
+		.map(quantize_to_8bits)
+		.collect();
+
+	return writer.write_image_data(&data);
 }
 
 fn main() {
 	let shader = MyShader::new();
-	let res = 512;
+	let w = 512;
+	let h = w;
 	let num_samples = 16;
-	let mut pt = PathTracer::new(
-		shader,
-		Buffer::<Color>::new(res,res,color![0,0,0,0]));
+	let image = Buffer::<Float3>::new(w,h,float3![0,0,0]);
+	let mut pt = PathTracer::new(shader, image);
+	let mut i = 1;
 	loop {
 		pt.render(num_samples);
-		pt.save(Path::new("image.png")).unwrap();
+		let image = postprocess(&pt.image().map(|&value| value / (i as f32)));
+		save_image(&image, Path::new("image.png")).unwrap();
+		println!("iteration {} saved", i);
+		i += 1;
 	}
 }
 
