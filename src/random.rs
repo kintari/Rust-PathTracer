@@ -40,11 +40,13 @@ impl Random {
 		let v = self.unit_vector();
 		
 		// project onto plane orthogonal to 'dir'
-		let u = v-Float3::dot(dir,v)*dir;
+		let u = v-dot(dir,v)*dir;
 
 		let len = length(u);
 		let z = f32::sqrt(f32::max(0.0,1.0-len*len));
-		return u+z*dir;
+		
+		let result = u+z*dir;
+		return if dot(result,dir) > 0.0 { result } else { -result };
 	}
 
 }

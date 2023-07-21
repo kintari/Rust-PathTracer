@@ -1,5 +1,5 @@
 
-use std::ops::{Add,Sub,Mul,Div};
+use std::ops::{Add,Sub,Mul,Div,Neg};
 
 use super::Vector;
 
@@ -42,6 +42,48 @@ fn abs(v: Float3) -> Float3 {
 	return Float3 { x: f32::abs(v.x), y: f32::abs(v.y), z: f32::abs(v.z) };
 }
 
+
+impl Add<Float3> for Float3 {
+	type Output = Float3;
+	fn add(self, rhs: Self) -> Self::Output {
+		return Self {
+			x: self.x + rhs.x,
+			y: self.y + rhs.y,
+			z: self.z + rhs.z
+		};
+	}
+}
+
+impl Add<f32> for Float3 {
+	type Output = Float3;
+	fn add(self, rhs: f32) -> Self::Output {
+		return self + Float3::new(rhs,rhs,rhs);
+	}
+}
+
+impl Div<f32> for Float3 {
+	type Output = Float3;
+	fn div(self, rhs: f32) -> Self::Output {
+		return self / Float3::new(rhs, rhs, rhs);
+	}
+}
+
+impl Div<Float3> for Float3 {
+	type Output = Float3;
+	fn div(self, rhs: Float3) -> Float3 {
+		let x = self.x / rhs.x;
+		let y = self.y / rhs.y;
+		let z = self.z / rhs.z;
+		return Float3::new(x, y, z);
+	}
+}
+
+impl From<f32> for Float3 {
+	fn from(value: f32) -> Float3 {
+		return Float3::new(value, value, value);
+	}
+}
+
 impl Mul<f32> for Float3 {
 	type Output = Float3;
 	fn mul(self, rhs: f32) -> Self::Output {
@@ -71,21 +113,10 @@ impl Mul<Float3> for Float3 {
 	}
 }
 
-impl Add<Float3> for Float3 {
-	type Output = Float3;
-	fn add(self, rhs: Self) -> Self::Output {
-		return Self {
-			x: self.x + rhs.x,
-			y: self.y + rhs.y,
-			z: self.z + rhs.z
-		};
-	}
-}
-
-impl Add<f32> for Float3 {
-	type Output = Float3;
-	fn add(self, rhs: f32) -> Self::Output {
-		return self + Float3::new(rhs,rhs,rhs);
+impl Neg for Float3 {
+	type Output = Self;
+	fn neg(self) -> Self {
+		return Self::new(-self.x, -self.y, -self.z);
 	}
 }
 
@@ -104,28 +135,5 @@ impl Sub<f32> for Float3 {
 	type Output = Float3;
 	fn sub(self, rhs: f32) -> Self::Output {
 		return self - Float3::new(rhs, rhs, rhs);
-	}
-}
-
-impl Div<f32> for Float3 {
-	type Output = Float3;
-	fn div(self, rhs: f32) -> Self::Output {
-		return self / Float3::new(rhs, rhs, rhs);
-	}
-}
-
-impl Div<Float3> for Float3 {
-	type Output = Float3;
-	fn div(self, rhs: Float3) -> Float3 {
-		let x = self.x / rhs.x;
-		let y = self.y / rhs.y;
-		let z = self.z / rhs.z;
-		return Float3::new(x, y, z);
-	}
-}
-
-impl From<f32> for Float3 {
-	fn from(value: f32) -> Float3 {
-		return Float3::new(value, value, value);
 	}
 }

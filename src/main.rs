@@ -1,6 +1,8 @@
 #![allow(non_snake_case)]
 #![allow(unused_imports)]
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unreachable_code)]
 
 mod color;
 mod buffer;
@@ -33,17 +35,6 @@ macro_rules! cond {
 	}
 }
 
-/*
-macro_rules! color {
-	($r:expr,$g:expr,$b:expr,$a:expr) => {
-		Color::new($r as f32, $g as f32, $b as f32, $a as f32)
-	};
-	($x:expr) => {
-		Color::new($x as f32, $x as f32, $x as f32, $x as f32)
-	};
-}
-*/
-
 struct Hit {
 	distance: f32,
 	location: Float3,
@@ -54,7 +45,6 @@ struct MyShader {
 	random: Random,
 	sphere: sdf::Sphere,
 	walls: [sdf::Plane;5],
-	ray_depth: u32,
 	half_dims: Float3
 }
 
@@ -75,7 +65,6 @@ impl MyShader {
 			random: Random::new(),
 			sphere: sdf::Sphere::new(float3![0,-1,0], 2.0),
 			walls,
-			ray_depth: 0,
 			half_dims: float3![dx, dy, dz]
 		};
 	}
@@ -94,13 +83,14 @@ impl MyShader {
 		let light_size = 2.0;
 		if f32::abs(p.x) < light_size && f32::abs(p.z+2.0) < light_size {
 			if p.y + 0.01 > self.half_dims.y {
-				return float3![4.0];
+				return float3![20.0];
 			}
 		}
 		return float3![0.0];
 	}
 
 	fn diffuse_color(&self, p: Float3) -> Float3 {
+	return float3![0.5];
 		let d = 0.01;
 		if f32::abs(p.x) + d >= self.half_dims.x {
 			return cond![
@@ -176,12 +166,17 @@ impl Shader for MyShader {
 		let mut Kd = float3![1];
 		let mut I = float3![0];
 
-		let mut iterations = 5;
+		let mut iterations = 3;
 		while iterations > 0 {
 			if let Some(hit) = self.ray_march(P, D, 0.001) {
-				I = I + Kd * self.emissive(hit.location);
-				Kd = Kd * self.diffuse_color(hit.location);
-				D = self.random.cosine_weighted(hit.normal);
+				//D = self.random.cosine_weighted(hit.normal);
+				I += Kd * self.emissive(hit.location);
+				D = self.random.unit_vector();
+				if dot(D,hit.normal) < 0.0 {
+					D = -D;
+				}
+				let cos_theta = dot(D,hit.normal);
+				Kd = cos_theta * Kd * self.diffuse_color(hit.location);
 				P = hit.location + 0.005 * D;
 			}
 			else {
@@ -223,15 +218,14 @@ impl<T: Shader> PathTracer<T> {
 		let w = self.image.get_width();
 		let h = self.image.get_height();
 		let resolution = float3![w,h,0];
-		let e = 0.0; // exposure
 		let f = |i,j,&prev_color: &Float3| {
 			let frag_coord = float3![i, h-j-1, 0];
 			let mut frag_color = float3![0];
 			for _ in 0..iterations {
 				let c = self.shader.main(frag_coord, resolution);
-				frag_color = frag_color + exposure(c, e);
+				frag_color = frag_color + c;
 			}
-			return frag_color / (iterations as f32) + prev_color;
+			return frag_color + prev_color;
 		};
 		self.image.fill(f);
 	}
@@ -243,39 +237,30 @@ impl<T: Shader> PathTracer<T> {
 } // impl PathTracer
 
 fn quantize_to_8bits(value: f32) -> u8 {
-	return f32::floor(saturate(value) * 255.9) as u8;
+	return f32::floor(saturate(value) * 255.0) as u8;
 }
 
 fn postprocess(image: &Buffer<Float3>) -> Buffer<Float3> {
-	return image.map(|x| ACESFilm(*x));
+	//return image.map(|x| ACESFilm(*x));
+	return image.map(|x| *x);
 }
 
-fn save_image(image: &Buffer<Float3>, path: &Path) -> Result<(), png::EncodingError> {
-
-	let file = File::create(path).unwrap();
-	let ref mut output = BufWriter::new(file);
-
-	let w = image.get_width();
-	let h = image.get_height();
-
-	let mut encoder = png::Encoder::new(output, w as u32, h as u32);
-	encoder.set_color(png::ColorType::Rgba);
-	encoder.set_depth(png::BitDepth::Eight);
-	encoder.set_srgb(png::SrgbRenderingIntent::RelativeColorimetric);
-
-	let mut writer = encoder.write_header().unwrap();
-
+fn save_image(image: &Buffer<Float3>, path: &Path) {
 	let data: Vec<u8> = image.get_pixels().iter()
 		.flat_map(|px| [px.x,px.y,px.z,1.0])
 		.map(quantize_to_8bits)
 		.collect();
-
-	return writer.write_image_data(&data);
+	image::save_buffer(
+		path,
+		&data,
+		image.get_width() as u32,
+		image.get_height() as u32,
+		image::ColorType::Rgba8).unwrap();
 }
 
 fn main() {
 	let shader = MyShader::new();
-	let w = 512;
+	let w = 256;
 	let h = w;
 	let num_samples = 16;
 	let image = Buffer::<Float3>::new(w,h,float3![0,0,0]);
@@ -283,51 +268,11 @@ fn main() {
 	let mut i = 1;
 	loop {
 		pt.render(num_samples);
-		let image = postprocess(&pt.image().map(|&value| value / (i as f32)));
-		save_image(&image, Path::new("image.png")).unwrap();
+		let scale: f32 = 1.0 / ((i*num_samples) as f32);
+		let image = pt.image()
+			.map(|&value| value * scale);
+		save_image(&image, Path::new("image.bmp"));
 		println!("iteration {} saved", i);
 		i += 1;
 	}
 }
-
-
-
-
-/*
-trait Shape {
-	fn sdf(&self, p: Float3) -> f32;
-	fn normal(&self, p: Float3) -> Float3;
-}
-
-struct Sphere {
-	center: Float3,
-	radius: f32
-}
-
-impl Shape for Sphere {
-	fn sdf(&self, p: Float3) -> f32 {
-		return length(self.center-p)-self.radius;
-	}
-	fn normal(&self, p: Float3) -> Float3 {
-		return normalize(p-self.center);
-	}
-}
-
-struct Plane {
-	normal: Float3,
-	distance: f32
-}
-
-impl Shape for Plane {
-	fn sdf(&self, p: Float3) -> f32 {
-		return Vector::dot(self.normal,p)-self.distance;
-	}
-	fn normal(&self, _: Float3) -> Float3 {
-		return self.normal;
-	}
-}
-
-struct Scene {
-	shapes: Vec<Box<dyn Shape>>
-}
-*/
