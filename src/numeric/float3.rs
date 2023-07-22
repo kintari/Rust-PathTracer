@@ -1,5 +1,5 @@
 
-use std::ops::{Add,Sub,Mul,Div,Neg};
+use std::ops::*;
 
 use super::Vector;
 
@@ -23,25 +23,26 @@ macro_rules! float3 {
 pub(crate) use float3;
 
 impl Vector for Float3 {
-	
 	fn dot(u: Float3, v: Float3) -> f32 {
 		return u.x*v.x + u.y*v.y + u.z*v.z;
 	}
-
 }
 
 impl Float3 {
-	
 	pub fn new(x: f32, y: f32, z: f32) -> Self {
 		return Self { x, y, z };
 	}
-
 }
 
-fn abs(v: Float3) -> Float3 {
-	return Float3 { x: f32::abs(v.x), y: f32::abs(v.y), z: f32::abs(v.z) };
+pub trait Abs {
+	fn abs(val: Self) -> Self;
 }
 
+impl Abs for Float3 {
+	fn abs(v: Float3) -> Float3 {
+		return Float3 { x: f32::abs(v.x), y: f32::abs(v.y), z: f32::abs(v.z) };
+	}
+}
 
 impl Add<Float3> for Float3 {
 	type Output = Float3;
@@ -58,6 +59,18 @@ impl Add<f32> for Float3 {
 	type Output = Float3;
 	fn add(self, rhs: f32) -> Self::Output {
 		return self + Float3::new(rhs,rhs,rhs);
+	}
+}
+
+impl AddAssign<Float3> for Float3 {
+	fn add_assign(&mut self, rhs: Self) {
+		*self = *self + rhs;
+	}
+}
+
+impl AddAssign<f32> for Float3 {
+	fn add_assign(&mut self, rhs: f32) {
+		*self = *self + Float3::new(rhs, rhs, rhs);	
 	}
 }
 
@@ -110,6 +123,12 @@ impl Mul<Float3> for Float3 {
 			y: self.y * rhs.y,
 			z: self.z * rhs.z
 		}
+	}
+}
+
+impl MulAssign<Float3> for Float3 {
+	fn mul_assign(&mut self, rhs: Float3) {
+		*self = Self::new(self.x * rhs.x, self.y * rhs.y, self.z * rhs.z);
 	}
 }
 

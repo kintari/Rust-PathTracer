@@ -30,8 +30,8 @@ impl Sdf for Plane {
 
 
 pub struct Sphere {
-	center: Float3,
-	radius: f32
+	pub center: Float3,
+	pub radius: f32
 }
 
 impl Sphere {

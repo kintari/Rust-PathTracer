@@ -27,13 +27,13 @@ impl<T: Copy> Buffer<T> {
 	}
 
 	pub fn map<F,R>(&self, f: F) -> Buffer<R>
-		where F: FnMut(&T) -> R
+		where F: FnMut(&T) -> R, R: Copy
 	{
 		let pixels: Vec<_> = self.get_pixels().iter().map(f).collect();
 		return Buffer {
 			width: self.get_width(),
 			height: self.get_height(),
-			pixels: pixels
+			pixels: pixels.to_vec()
 		};
 	}
 

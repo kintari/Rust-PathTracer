@@ -1,6 +1,7 @@
 pub mod float3;
 
 pub use float3::Float3;
+pub use float3::Abs;
 
 pub fn length<T>(v: T) -> f32
 	where T: Vector
@@ -12,6 +13,10 @@ pub fn normalize<T>(v: T) -> T
 	where T: Vector
 {
 	return v / length::<T>(v);
+}
+
+pub fn abs<T: Abs>(val: T) -> T {
+	return T::abs(val);
 }
 
 pub fn dot<T: Vector>(u: T, v: T) -> f32 {

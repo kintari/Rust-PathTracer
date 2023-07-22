@@ -37,6 +37,7 @@ impl Random {
 	}
 
 	pub fn cosine_weighted(&mut self, dir: Float3) -> Float3 {
+
 		let v = self.unit_vector();
 		
 		// project onto plane orthogonal to 'dir'
@@ -46,7 +47,8 @@ impl Random {
 		let z = f32::sqrt(f32::max(0.0,1.0-len*len));
 		
 		let result = u+z*dir;
-		return if dot(result,dir) > 0.0 { result } else { -result };
+
+		return result;
 	}
 
 }
