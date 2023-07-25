@@ -1,4 +1,4 @@
-use crate::numeric::*;
+use crate::float3::*;
 
 pub trait Sdf {
 	fn distance(&self, p: Float3) -> f32;
@@ -35,17 +35,33 @@ pub struct Sphere {
 }
 
 impl Sphere {
-
 	pub fn new(center: Float3, radius: f32) -> Sphere {
 		return Sphere { center, radius };
 	}
-
 }
 
 impl Sdf for Sphere {
-
 	fn distance(&self, p: Float3) -> f32 {
 		return length(p-self.center)-self.radius;
 	}
+}
 
+pub struct Box {
+	center: Float3,
+	size: Float3
+}
+
+impl Box {
+	pub fn new(center: Float3, size: Float3) -> Self {
+		return Box { center, size };
+	}
+}
+
+impl Sdf for Box {
+	fn distance(&self, p: Float3) -> f32 {
+		let b = 0.5*self.size;
+		let q = abs(p-self.center)-b;
+		return length(max(q, float3![0])) +
+			f32::min(f32::max(q.x, f32::max(q.y, q.z)), 0.0);
+	}	
 }

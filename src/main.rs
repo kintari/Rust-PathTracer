@@ -5,8 +5,8 @@
 #![allow(unreachable_code)]
 
 mod color;
+mod float3;
 mod buffer;
-mod numeric;
 mod random;
 mod shader;
 mod sdf;
@@ -25,9 +25,8 @@ use std::ops::*;
 use std::cmp::{min,max,Ordering};
 use std::iter::zip;
 
-use numeric::*;
-
 use random::Random;
+use float3::*;
 
 macro_rules! cond {
 	($test:expr,$true_expr:expr,$false_expr:expr) => {
@@ -44,9 +43,10 @@ struct Hit {
 struct MyShader {
 	random: Random,
 	sphere: sdf::Sphere,
-	walls: [sdf::Plane;5],
+	walls: [sdf::Plane;6],
 	half_dims: Float3,
-	contact_distance: f32
+	contact_distance: f32,
+	light: sdf::Box
 }
 
 impl MyShader {
@@ -56,18 +56,22 @@ impl MyShader {
 		let dy = 6.0;
 		let dz = 4.0;
 		let walls = [
-			sdf::Plane::new(float3![-1,0,0], -dx),
-			sdf::Plane::new(float3![ 1,0,0], -dx),
-			sdf::Plane::new(float3![ 0,1,0], -dy),
-			sdf::Plane::new(float3![0,-1,0], -dy),
-			sdf::Plane::new(float3![0,0,-1], -dz)
+			sdf::Plane::new(float3![-1, 0, 0], -dx),
+			sdf::Plane::new(float3![ 1, 0, 0], -dx),
+			sdf::Plane::new(float3![ 0, 1, 0], -dy),
+			sdf::Plane::new(float3![ 0,-1, 0], -dy),
+			sdf::Plane::new(float3![ 0, 0,-1], -dz),
+			sdf::Plane::new(float3![ 0, 0, 1], -25.0)
 		];
 		return Self {
 			random: Random::new(),
-			sphere: sdf::Sphere::new(float3![0,-1,0], 2.0),
+			sphere: sdf::Sphere::new(float3![0,-1.5,0], 2.0),
 			walls,
 			half_dims: float3![dx, dy, dz],
-			contact_distance: 1.0 / 1024.0
+			contact_distance: 1.0 / 1024.0,
+			light: sdf::Box::new(
+				float3!(0,5.75,-2),
+				float3!(4,0.50,4))
 		};
 	}
 
@@ -77,16 +81,18 @@ impl MyShader {
 			.map(|sdf| sdf.distance(p))
 			.reduce(|a,x| cond![a < x, a, x])
 			.unwrap();
-		let d = f32::min(d_sphere, d_walls);
+		let d_light = self.light.distance(p);
+		let d = f32::min(f32::min(d_sphere, d_walls), d_light);
 		return d;
 	}
 
 	fn emissive(&self, p: Float3) -> Float3 {
-		let light_size = 2.0;
-		if f32::abs(p.x) < light_size && f32::abs(p.z+2.0) < light_size {
-			if p.y + 0.01 > self.half_dims.y {
-				return float3![10.0];
-			}
+		let epsilon = 0.001;
+		if self.light.distance(p) < epsilon {
+			return float3![5.0];
+		}
+		else if self.walls[5].distance(p) < epsilon {
+			return float3![1.0];
 		}
 		return float3![0.0];
 	}
@@ -144,62 +150,57 @@ impl MyShader {
 		return normalize(float3![clip.x, clip.y, 2.4]);
 	}
 	
-	fn env(&self, _v: Float3) -> Float3 {
-		return float3![0.0];
+	fn env(&self, v: Float3) -> Float3 {
+		return float3![0.5];
 	}
 
 }
 
 impl Shader for MyShader {
 
-	fn main(&mut self, fragCoord: Float3, resolution: Float3, prev_color: Float3) -> Float3 {
+	fn main(&mut self, fragCoord: Float3, resolution: Float3) -> Float3 {
 
-		let jitter = 0.5 * float3![
-			self.random.uniform_in_range(-1.0, 1.0),
-			self.random.uniform_in_range(-1.0, 1.0),
-			0.0];
-
-		let uv = (fragCoord + jitter) / resolution;
+		let uv = fragCoord / resolution;
 		let camera = float3![0, 0, -20];
 		let dir = self.unproject(float3![uv.x, uv.y, 0.0]);
 
 		let mut P = camera;
 		let mut D = dir;
 		let mut Kd = float3![1];
+		let roughness = 0.5;
 		let mut I = float3![0];
 
 		let mut iterations = 5;
 		while iterations > 0 {
 			if let Some(hit) = self.ray_march(P, D, self.contact_distance) {
-
-				I += Kd * self.emissive(hit.location);
-
-				// generate a new direction for bounce
-				D = self.random.cosine_weighted(hit.normal);
-				if dot(D,hit.normal) < 0.0 {
-					D = -D;
-				}
-
+				I += Float3::max(
+					Kd * self.emissive(hit.location),
+					float3![0]
+				);
 				Kd *= self.diffuse_color(hit.location);
-				P = hit.location + 16.0 * self.contact_distance * D;
+				D = normalize(lerp(
+					hit.normal,
+					self.random.cosine_weighted(hit.normal),
+					roughness));
+				P = hit.location + 8.0 * self.contact_distance * D;
 			}
 			else {
-				I += Kd * self.env(D);
+				I += Kd * self.diffuse_color(P) * self.env(D);
 				break;
 			}
 			iterations -= 1;
 		}
-		return prev_color + I;
+		return I;
 	}
 
 } // impl Shader
 
 fn ACESFilm(x: Float3) -> Float3 {
-	let a = 2.51;
-	let b = 0.03;
-	let c = 2.43;
-	let d = 0.59;
-	let e = 0.14;
+	let a = float3![2.51];
+	let b = float3![0.03];
+	let c = float3![2.43];
+	let d = float3![0.59];
+	let e = float3![0.14];
 	return saturate((x*(a*x+b))/(x*(c*x+d)+e));
 }
 
@@ -210,28 +211,55 @@ fn exposure(value: Float3, e: f32) -> Float3 {
 struct PathTracer<T> {
 	shader: T,
 	image: Buffer<Float3>,
-	exposure: f32
+	exposure: f32,
+	samples_per_pixel: usize,
+	random: Random,
+	iteration: usize
 }
 
 impl<T: Shader> PathTracer<T> {
-	
+
 	fn new(shader: T, image: Buffer::<Float3>) -> Self {
-		return Self { shader, image, exposure: 0.0 };
+		return Self {
+			shader,
+			image,
+			exposure: 0.0,
+			samples_per_pixel: 64,
+			iteration: 0,
+			random: Random::new()
+		};
+	}
+
+	fn iteration(&self) -> usize {
+		return self.iteration;
 	}
 
 	fn render(&mut self) {
 		let w = self.image.get_width();
 		let h = self.image.get_height();
 		let resolution = float3![w,h,0];
-		let f = |i,j,&prev_color: &Float3| {
-			let frag_coord = float3![i, h-j-1, 0];
-			return self.shader.main(frag_coord, resolution, prev_color);
+		let fac = 1.0 / (self.samples_per_pixel as f32);
+		let mut f = |i,j| {
+			let mut I = float3![0];
+			for _ in 0 .. self.samples_per_pixel {
+				let jitter = float3!(self.random.uniform(), self.random.uniform(), 0.0) - float3!(0.5, 0.5, 0.0);
+				let frag_coord = float3![i, h-j-1, 0] + jitter;
+				I += fac * self.shader.main(frag_coord, resolution);
+			}
+			return I;
 		};
-		self.image.fill(f);
+		self.image.fill(|i,j,&prev_color| prev_color + f(i,j));
+		self.iteration += 1;
 	}
 
 	fn image(&self) -> &Buffer<Float3> {
 		return &self.image;
+	}
+
+	fn postprocess(&self) -> Buffer<Float3> {
+		let fac = 1.0 / (self.iteration as f32);
+		return self.image
+			.map(|&color| ACESFilm(fac*color));
 	}
 
 } // impl PathTracer
@@ -240,11 +268,6 @@ fn quantize_to_8bits(value: f32) -> u8 {
 	let i: i32 = f32::floor(value * 255.0) as i32;
 	let i = i32::clamp(i, 0, 255);
 	return i as u8;
-}
-
-fn postprocess(image: &Buffer<Float3>) -> Buffer<Float3> {
-	return image.map(|x| ACESFilm(*x));
-	//return image.map(|x| *x);
 }
 
 fn save_image(image: &Buffer<Float3>, path: &Path) {
@@ -262,21 +285,15 @@ fn save_image(image: &Buffer<Float3>, path: &Path) {
 
 fn main() {
 	let shader = MyShader::new();
-	let w = 512;
+	let w = 256;
 	let h = w;
-	let num_samples = 16;
-	let mut pt = PathTracer::new(shader, Buffer::<Float3>::new(w,h,float3![0,0,0]));
-	let mut iteration = 1;
+	let mut pt = PathTracer::new(
+		shader,
+		Buffer::<Float3>::new(w,h,float3![0,0,0]));
 	loop {
 		pt.render();
-		let post_image = postprocess(&pt.image().map(|&color| {
-			color / (iteration as f32)
-		}));
-		let rem = iteration % 16;
-		if rem == 0 {
-			save_image(&post_image, Path::new("image.bmp"));
-			println!("iteration {} saved", iteration);
-		}
-		iteration += 1;
+		let post_image = pt.postprocess();
+		save_image(&post_image, Path::new("image.bmp"));
+		println!("iteration {} saved", pt.iteration());
 	}
 }

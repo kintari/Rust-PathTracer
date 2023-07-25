@@ -1,11 +1,9 @@
 use rand_pcg::Pcg32;
 use rand_core::SeedableRng;
 use rand::Rng;
-
-use crate::numeric::*;
-use crate::numeric::float3::*;
-
 use std::f32::consts::PI;
+
+use super::float3::*;
 
 pub struct Random {
 	rng: Pcg32

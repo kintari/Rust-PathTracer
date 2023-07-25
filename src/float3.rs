@@ -1,13 +1,97 @@
 
 use std::ops::*;
 
-use super::Vector;
-
-#[derive(Copy,Clone)]
+#[derive(Copy,Clone,Debug)]
 pub struct Float3 {
 	pub x: f32,
 	pub y: f32,
 	pub z: f32
+}
+
+pub fn dot(u: Float3, v: Float3) -> f32 {
+	return u.x*v.x + u.y*v.y + u.z*v.z;
+}
+
+pub fn length(u: Float3) -> f32 {
+	return f32::sqrt(dot(u,u));
+}
+
+pub fn normalize(v: Float3) -> Float3 {
+	let rcp_len = 1.0 / length(v);
+	return v * rcp_len;
+}
+
+pub fn lerp(a: Float3, b: Float3, t: f32) -> Float3 {
+	let t = f32::clamp(t, 0.0, 1.0);
+	return t*b + (1.0-t)*a;
+}
+
+pub trait Abs {
+	fn abs(v: Self) -> Self;
+}
+
+impl Abs for Float3 {
+	fn abs(v: Self) -> Self {
+		return Self {
+			x: f32::abs(v.x),
+			y: f32::abs(v.y),
+			z: f32::abs(v.z)
+		};
+	}
+}
+
+pub fn abs<T: Abs>(val: T) -> T {
+	return T::abs(val);
+}
+
+pub trait Max {
+	fn max(u: Self, v: Self) -> Self;
+}
+
+/*
+impl Max for f32 {
+	fn max(u: Self, v: Self) -> Self {
+		return f32::max(u, v);
+	}
+}
+*/
+
+impl Max for Float3 {
+	fn max(u: Self, v: Self) -> Self {
+		return Self {
+			x: f32::max(u.x, v.x),
+			y: f32::max(u.y, v.y),
+			z: f32::max(u.z, v.z)
+		};
+	}
+}
+
+pub fn max<T: Max>(u: T, v: T) -> T {
+	return T::max(u, v);
+}
+
+pub trait Saturate {
+	fn saturate(self: Self) -> Self;
+}
+
+impl Saturate for f32 {
+	fn saturate(self) -> Self {
+		return f32::clamp(self, 0.0, 1.0);
+	}
+}
+
+impl Saturate for Float3 {
+	fn saturate(self: Self) -> Self {
+		return Self {
+			x: self.x.saturate(),
+			y: self.y.saturate(),
+			z: self.z.saturate()
+		};
+	}
+}
+
+pub fn saturate<V: Saturate>(v: V) -> V {
+	return v.saturate();
 }
 
 #[macro_export]
@@ -22,25 +106,9 @@ macro_rules! float3 {
 
 pub(crate) use float3;
 
-impl Vector for Float3 {
-	fn dot(u: Float3, v: Float3) -> f32 {
-		return u.x*v.x + u.y*v.y + u.z*v.z;
-	}
-}
-
 impl Float3 {
 	pub fn new(x: f32, y: f32, z: f32) -> Self {
 		return Self { x, y, z };
-	}
-}
-
-pub trait Abs {
-	fn abs(val: Self) -> Self;
-}
-
-impl Abs for Float3 {
-	fn abs(v: Float3) -> Float3 {
-		return Float3 { x: f32::abs(v.x), y: f32::abs(v.y), z: f32::abs(v.z) };
 	}
 }
 
@@ -54,14 +122,14 @@ impl Add<Float3> for Float3 {
 		};
 	}
 }
-
+/*
 impl Add<f32> for Float3 {
 	type Output = Float3;
 	fn add(self, rhs: f32) -> Self::Output {
 		return self + Float3::new(rhs,rhs,rhs);
 	}
 }
-
+*/
 impl AddAssign<Float3> for Float3 {
 	fn add_assign(&mut self, rhs: Self) {
 		*self = *self + rhs;

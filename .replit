@@ -1,5 +1,5 @@
 run = "clear; cargo run --release"
-hidden = ["target"]
+hidden = ["target",".vscode",".gitignore"]
 entrypoint = "src/main.rs"
 
 [packager]

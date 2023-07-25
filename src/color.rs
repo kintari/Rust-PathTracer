@@ -1,3 +1,4 @@
+/*
 #[derive(Clone,Copy)]
 pub struct Color {
 	pub r: f32,
@@ -27,3 +28,4 @@ impl Mul<f32> for Color {
 		);
 	}
 }
+*/
