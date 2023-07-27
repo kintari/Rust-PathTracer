@@ -52,7 +52,8 @@ struct MyShader {
 	walls: [sdf::Plane;6],
 	half_dims: Float3,
 	contact_distance: f32,
-	light: sdf::Box
+	light: sdf::Box,
+	max_iterations: usize
 }
 
 impl MyShader {
@@ -69,15 +70,16 @@ impl MyShader {
 			sdf::Plane::new(float3![ 0, 0,-1], -dz),
 			sdf::Plane::new(float3![ 0, 0, 1], -25.0)
 		];
+		let light = sdf::Box::new(float3!(0,5.75,-2),float3!(4,0.50,4));
+		let sphere = sdf::Sphere::new(float3![0,-1.5,0], 2.0);
 		return Self {
 			random: Random::new(),
-			sphere: sdf::Sphere::new(float3![0,-1.5,0], 2.0),
+			sphere,
 			walls,
 			half_dims: float3![dx, dy, dz],
 			contact_distance: 1.0 / 1024.0,
-			light: sdf::Box::new(
-				float3!(0,5.75,-2),
-				float3!(4,0.50,4))
+			light,
+			max_iterations: 250
 		};
 	}
 
