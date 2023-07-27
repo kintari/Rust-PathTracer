@@ -1,5 +1,6 @@
 use crate::float3::*;
+use crate::ray::*;
 
 pub trait Shader {
-	fn main(&mut self, frag_coord: Float3, resolution: Float3) -> Float3;
+	fn main(&self, ray: Ray) -> Float3;
 }

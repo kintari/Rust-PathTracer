@@ -1,4 +1,4 @@
-run = "clear; cargo run --release"
+run = "clear; cargo +nightly run --release"
 hidden = ["target",".vscode",".gitignore"]
 entrypoint = "src/main.rs"
 

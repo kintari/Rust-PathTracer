@@ -29,7 +29,7 @@ impl<T: Copy> Buffer<T> {
 	pub fn map<F,R>(&self, f: F) -> Buffer<R>
 		where F: FnMut(&T) -> R, R: Copy
 	{
-		let pixels: Vec<_> = self.get_pixels().iter().map(f).collect();
+		let pixels: Vec<_> = self.pixels.iter().map(f).collect();
 		return Buffer {
 			width: self.get_width(),
 			height: self.get_height(),
@@ -45,8 +45,12 @@ impl<T: Copy> Buffer<T> {
 		return self.height;
 	}
 
-	pub fn get_pixels(&self) -> &Vec<T> {
+	pub fn pixels(&self) -> &Vec<T> {
 		return &self.pixels;
+	}
+
+	pub fn pixels_mut(&mut self) -> &mut Vec<T> {
+		return &mut self.pixels;
 	}
 
 }
