@@ -46,7 +46,8 @@ struct MyShader {
 	walls: [sdf::Plane;6],
 	half_dims: Float3,
 	contact_distance: f32,
-	light: sdf::Box
+	light: sdf::Box,
+	max_iterations: usize
 }
 
 impl MyShader {
@@ -63,15 +64,16 @@ impl MyShader {
 			sdf::Plane::new(float3![ 0, 0,-1], -dz),
 			sdf::Plane::new(float3![ 0, 0, 1], -25.0)
 		];
+		let light = sdf::Box::new(float3!(0,5.75,-2),float3!(4,0.50,4));
+		let sphere = sdf::Sphere::new(float3![0,-1.5,0], 2.0);
 		return Self {
 			random: Random::new(),
-			sphere: sdf::Sphere::new(float3![0,-1.5,0], 2.0),
+			sphere,
 			walls,
 			half_dims: float3![dx, dy, dz],
 			contact_distance: 1.0 / 1024.0,
-			light: sdf::Box::new(
-				float3!(0,5.75,-2),
-				float3!(4,0.50,4))
+			light,
+			max_iterations: 250
 		};
 	}
 
@@ -112,7 +114,7 @@ impl MyShader {
 	}
 
 	fn calc_normal(&self, p: Float3) -> Float3 {
-		let h = 1.0 / 4096.0;
+		let h = 1.0 / 512.0;
 		let dx = h*float3![1,0,0];
 		let dy = h*float3![0,1,0];
 		let dz = h*float3![0,0,1];
@@ -125,7 +127,7 @@ impl MyShader {
 	fn ray_march(&self, pos: Float3, dir: Float3, threshold: f32) -> Option<Hit> {
 		let mut t = 0.0;
 		let mut i = 0;
-		while i < 250 {
+		while i < self.max_iterations {
 			let p = pos + t * dir;
 			let d = self.scene_distance(p);
 			if d < threshold {
@@ -151,12 +153,13 @@ impl MyShader {
 	}
 	
 	fn env(&self, v: Float3) -> Float3 {
-		return float3![0.5];
+		return float3![0.0, 1.0, 1.0];
 	}
 
 }
 
 impl Shader for MyShader {
+
 
 	fn main(&mut self, fragCoord: Float3, resolution: Float3) -> Float3 {
 
@@ -173,16 +176,25 @@ impl Shader for MyShader {
 		let mut iterations = 5;
 		while iterations > 0 {
 			if let Some(hit) = self.ray_march(P, D, self.contact_distance) {
-				I += Float3::max(
-					Kd * self.emissive(hit.location),
-					float3![0]
-				);
-				Kd *= self.diffuse_color(hit.location);
+				I += Float3::max(Kd * self.emissive(hit.location), float3![0]);
+				
+				D = normalize(lerp(
+					hit.normal,
+					self.random.unit_vector(),
+					roughness));
+
+				let cos_theta = dot(D, hit.normal);
+
+				Kd *= cos_theta * self.diffuse_color(hit.location);
+
+/*
 				D = normalize(lerp(
 					hit.normal,
 					self.random.cosine_weighted(hit.normal),
 					roughness));
-				P = hit.location + 8.0 * self.contact_distance * D;
+*/
+
+				P = hit.location + 4.0 * self.contact_distance * D;
 			}
 			else {
 				I += Kd * self.diffuse_color(P) * self.env(D);
@@ -285,7 +297,7 @@ fn save_image(image: &Buffer<Float3>, path: &Path) {
 
 fn main() {
 	let shader = MyShader::new();
-	let w = 256;
+	let w = 512;
 	let h = w;
 	let mut pt = PathTracer::new(
 		shader,
