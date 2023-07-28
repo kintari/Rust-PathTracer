@@ -37,6 +37,12 @@ impl<T: Copy> Buffer<T> {
 		};
 	}
 
+	pub fn combine<F>(&mut self, buf: &Buffer::<T>, f: fn(T, T) -> T) {
+		for i in 0..self.pixels.len() {
+			self.pixels[i] = f(self.pixels[i], buf.pixels[i]);
+		}
+	}
+
 	pub fn get_width(&self) -> usize {
 		return self.width;
 	}
